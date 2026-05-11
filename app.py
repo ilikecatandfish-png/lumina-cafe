@@ -100,7 +100,8 @@ st.set_page_config(page_title="LUMINA Order System", layout="centered")
 st.markdown("""
     <style>
     /* 不要なStreamlit UIを非表示にする */
-    [data-testid="stHeader"] { display: none !important; }
+    [data-testid="stHeader"] { background: transparent !important; }
+    .stAppDeployButton { display: none !important; }
     [data-testid="stToolbar"] { display: none !important; }
     footer { visibility: hidden !important; }
 
