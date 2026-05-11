@@ -31,7 +31,6 @@ def decode_barcode(image_file):
         pass
     return None
 # --- 1. 初期設定 & 接続 ---
-DISCORD_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1500671474355278005/2A_W3zwA4jbwHffmCfTsB2PPqKu8jJ31OpbCbk4YsL2ZgjPtA7tjSKm7QmuGn1JbMNky"
 
 def get_gspread_client():
     import os
@@ -62,8 +61,15 @@ def update_sheet(sheet_name, row_data):
             st.error(f"シート連携エラー: {e}")
 
 def send_discord(msg):
-    if DISCORD_WEBHOOK_URL != "YOUR_DISCORD_WEBHOOK_URL":
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": msg})
+    webhook_url = None
+    if "discord_webhook_url" in st.secrets:
+        webhook_url = st.secrets["discord_webhook_url"]
+        
+    if webhook_url and webhook_url != "YOUR_DISCORD_WEBHOOK_URL":
+        try:
+            requests.post(webhook_url, json={"content": msg})
+        except:
+            pass
 
 def get_grouped_items(item_list, current_discount):
     grouped = {}
