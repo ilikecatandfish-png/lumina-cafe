@@ -31,7 +31,10 @@ def decode_barcode(image_file):
         pass
     return None
 # --- 1. 初期設定 & 接続 ---
-
+@st.cache_resource
+def get_global_db():
+    return {"tables": {}}
+global_db = get_global_db()
 def get_gspread_client():
     import os
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -228,26 +231,65 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- セッションステート初期化 ---
-if 'cart' not in st.session_state:
-    st.session_state.cart = []
-if 'ordered_items' not in st.session_state:
-    st.session_state.ordered_items = []
-if 'has_paper_book' not in st.session_state:
-    st.session_state.has_paper_book = False
-if 'has_ebook' not in st.session_state:
-    st.session_state.has_ebook = False
-if 'scanned_book_title' not in st.session_state:
-    st.session_state.scanned_book_title = None
-if 'timeline' not in st.session_state:
-    st.session_state.timeline = [
-        {"time": "1時間前", "book": "「星の王子さま」 - 何度読んでも新しい発見があります。"},
-        {"time": "3時間前", "book": "「銀河鉄道の夜」 - ホットティーと一緒に読むと最高です。"}
-    ]
-
-# --- 3. 画面構成 ---
+# --- セッションと画面構成（自動復元＆管理画面） ---
 query_params = st.query_params
 table_id = query_params.get("table", "不明")
+
+# ================= 管理画面 =================
+if table_id == "admin":
+    st.set_page_config(page_title="LUMINA Admin", layout="centered")
+    st.markdown("<style>.stApp {background-color: #2c3e50;} h1, h2, h3, p, div {color: white !important;} </style>", unsafe_allow_html=True)
+    st.title("💻 店長専用 管理画面")
+    st.markdown("各テーブルの注文状況（未会計の伝票）とリセット操作が行えます。")
+    
+    active_tables = [tid for tid in global_db["tables"] if len(global_db["tables"][tid].get("ordered_items", [])) > 0]
+    
+    if not active_tables:
+        st.info("現在、お会計待ちのテーブルはありません。")
+    else:
+        for t_id in active_tables:
+            data = global_db["tables"][t_id]
+            st.markdown(f"### Table {t_id}")
+            st.write("【注文済みの商品】")
+            for item in data["ordered_items"]:
+                st.write(f"- {item['name']}")
+            
+            if st.button(f"💳 Table {t_id} の会計を完了（リセット）", key=f"reset_{t_id}"):
+                del global_db["tables"][t_id]
+                st.success(f"Table {t_id} のデータをリセットしました！")
+                st.rerun()
+            st.divider()
+    st.stop() # 顧客画面を描画せずにここで終了
+# ============================================
+
+# ================= 顧客画面 =================
+if table_id not in global_db["tables"]:
+    global_db["tables"][table_id] = {
+        "cart": [],
+        "ordered_items": [],
+        "has_paper_book": False,
+        "has_ebook": False,
+        "scanned_book_title": None,
+        "timeline": [
+            {"time": "1時間前", "book": "「星の王子さま」 - 何度読んでも新しい発見があります。"},
+            {"time": "3時間前", "book": "「銀河鉄道の夜」 - ホットティーと一緒に読むと最高です。"}
+        ]
+    }
+
+# サーバー側のデータを復元
+db_ref = global_db["tables"][table_id]
+for key in ["cart", "ordered_items", "has_paper_book", "has_ebook", "scanned_book_title", "timeline"]:
+    if key not in st.session_state:
+        st.session_state[key] = db_ref[key]
+
+# データをサーバーに保存するための関数（末尾で呼び出す）
+def sync_db():
+    db_ref["cart"] = list(st.session_state.cart)
+    db_ref["ordered_items"] = list(st.session_state.ordered_items)
+    db_ref["has_paper_book"] = st.session_state.has_paper_book
+    db_ref["has_ebook"] = st.session_state.has_ebook
+    db_ref["scanned_book_title"] = st.session_state.scanned_book_title
+    db_ref["timeline"] = list(st.session_state.timeline)
 
 st.markdown(f"""
     <div class="librarian-box">
@@ -487,3 +529,6 @@ if st.button("リクエスト送信", use_container_width=True):
     st.toast(f"「{bgm_choice}」をリクエストしました！")
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# スクリプトの最後で常に状態をサーバーに同期・保存する
+sync_db()
