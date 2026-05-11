@@ -237,6 +237,8 @@ if 'has_paper_book' not in st.session_state:
     st.session_state.has_paper_book = False
 if 'has_ebook' not in st.session_state:
     st.session_state.has_ebook = False
+if 'scanned_book_title' not in st.session_state:
+    st.session_state.scanned_book_title = None
 if 'timeline' not in st.session_state:
     st.session_state.timeline = [
         {"time": "1時間前", "book": "「星の王子さま」 - 何度読んでも新しい発見があります。"},
@@ -249,9 +251,12 @@ table_id = query_params.get("table", "不明")
 
 st.markdown(f"""
     <div class="librarian-box">
-        <span style="font-size: 1.5em;">🐾</span> <b>司書からのご案内</b><br><br>
-        「大切な本を守るため、飲み終わった食器は私たちが丁寧にお下げします。<br>
-        読み終わりましたら、下のボタンでいつでも教えてくださいね」
+        <span style="font-size: 1.5em;">🐾</span> <b>当カフェの楽しみ方</b><br><br>
+        📖 <b>本をご持参の方</b>：下のボタンからスキャンして <b>25% OFF!</b><br>
+        💬 <b>おすすめ本をシェア</b>：さらに <b>5% OFF!</b><br>
+        最大30%OFFで、ゆったりとした読書の時間をお楽しみください☕<br>
+        <br>
+        <span style="font-size: 0.8em; color: #eee;">※大切な本を守るため、お済みの食器は一番下のボタンでお呼びいただければお下げします。</span>
     </div>
 """, unsafe_allow_html=True)
 
@@ -260,26 +265,35 @@ st.title(f"📖 LUMINA - Table {table_id}")
 
 
 # --- メインロジック（注文） ---
-st.markdown("<h3 style='color: #fdf5e6;'>🌟 割引サービス</h3>", unsafe_allow_html=True)
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("<span style='color: #fdf5e6; font-weight: bold;'>📖 本を持参した (25% OFF)</span>", unsafe_allow_html=True)
-    
-    st.session_state.has_ebook = st.checkbox("📱 電子書籍を持参（会計時に確認）", value=st.session_state.has_ebook)
-    
-    barcode_img = st.camera_input("📷 紙の本のバーコードをスキャン", key="paper_book_cam")
-    if barcode_img:
-        isbn = decode_barcode(barcode_img)
-        if isbn:
-            st.session_state.has_paper_book = True
-            st.success("バーコードを認識しました！(25% OFF適用)")
-        else:
-            st.error("読み取れませんでした。")
+with st.expander("🎁 割引サービスを利用する（タップして開く）"):
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("<span style='color: #fdf5e6; font-weight: bold;'>📖 本を持参した (25% OFF)</span>", unsafe_allow_html=True)
+        
+        st.session_state.has_ebook = st.checkbox("📱 電子書籍を持参（会計時に確認）", value=st.session_state.has_ebook)
+        
+        barcode_img = st.camera_input("📷 紙の本のバーコードをスキャン", key="paper_book_cam")
+        if barcode_img:
+            if not st.session_state.has_paper_book:
+                isbn = decode_barcode(barcode_img)
+                if isbn:
+                    st.session_state.has_paper_book = True
+                    title = fetch_book_info(isbn)
+                    st.session_state.scanned_book_title = title if title else "不明な本"
+                    st.rerun()
+                else:
+                    st.error("読み取れませんでした。")
+                    
+        if st.session_state.has_paper_book:
+            if st.session_state.scanned_book_title and st.session_state.scanned_book_title != "不明な本":
+                st.success(f"『{st.session_state.scanned_book_title}』を認識しました！(25% OFF適用)")
+            else:
+                st.success("バーコードを認識しました！(25% OFF適用)")
 
-with col2:
-    st.markdown("<span style='color: #fdf5e6; font-weight: bold;'>💡 おすすめ本を教えてください (5% OFF)</span>", unsafe_allow_html=True)
-    rec_book_title = st.text_input("本のタイトル", placeholder="例：星の王子さま")
-    rec_book_reason = st.text_area("おすすめの理由・感想", placeholder="何度読んでも新しい発見があります。", height=68)
+    with col2:
+        st.markdown("<span style='color: #fdf5e6; font-weight: bold;'>💡 おすすめ本を教えてください (5% OFF)</span>", unsafe_allow_html=True)
+        rec_book_title = st.text_input("本のタイトル", placeholder="例：星の王子さま")
+        rec_book_reason = st.text_area("おすすめの理由・感想", placeholder="何度読んでも新しい発見があります。", height=68)
 
 rec_book = ""
 if rec_book_title:
