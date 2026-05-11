@@ -99,6 +99,11 @@ st.set_page_config(page_title="LUMINA Order System", layout="centered")
 
 st.markdown("""
     <style>
+    /* 不要なStreamlit UIを非表示にする */
+    [data-testid="stHeader"] { display: none !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+    footer { visibility: hidden !important; }
+
     .stApp {
         background-color: #4e342e;
         background-image: url("https://www.transparenttextures.com/patterns/dark-wood.png");
