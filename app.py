@@ -257,20 +257,7 @@ st.markdown(f"""
 
 st.title(f"📖 LUMINA - Table {table_id}")
 
-# --- サイドバー：クイックサービス（おかたづけ・BGM） ---
-with st.sidebar:
-    st.header("Quick Service")
-    if st.button("🧹 食器を下げてほしい", use_container_width=True):
-        send_discord(f"🧹 **【食器回収依頼】Table {table_id}**\n本棚を守るため、速やかな回収をお願いします。")
-        st.toast("スタッフに伝わりました。そのままお待ちください。")
-    
-    st.divider()
-    
-    st.header("🎵 BGMリクエスト")
-    bgm_choice = st.selectbox("今の気分に合う音楽は？", ["静かなジャズ", "クラシック", "雨の音", "ケルト音楽", "無音（静寂）"])
-    if st.button("リクエスト送信", use_container_width=True):
-        send_discord(f"🎵 **【BGMリクエスト】Table {table_id}**\n希望BGM: {bgm_choice}")
-        st.toast(f"「{bgm_choice}」をリクエストしました！")
+
 
 # --- メインロジック（注文） ---
 st.markdown("<h3 style='color: #fdf5e6;'>🌟 割引サービス</h3>", unsafe_allow_html=True)
@@ -467,3 +454,22 @@ if len(st.session_state.ordered_items) > 0:
         
         send_discord(msg)
         st.info("レジにてお会計の準備をしております。お忘れ物がないようお気をつけください。")
+
+# --- クイックサービス（おかたづけ・BGM） ---
+st.divider()
+st.markdown("<h3 style='color: #fdf5e6;'>🛎️ クイックサービス</h3>", unsafe_allow_html=True)
+st.markdown('<div class="menu-card">', unsafe_allow_html=True)
+
+if st.button("🧹 食器を下げてほしい", use_container_width=True):
+    send_discord(f"🧹 **【食器回収依頼】Table {table_id}**\n本棚を守るため、速やかな回収をお願いします。")
+    st.toast("スタッフに伝わりました。そのままお待ちください。")
+
+st.markdown("<hr style='border: 1px solid rgba(0,0,0,0.1);'>", unsafe_allow_html=True)
+
+st.markdown("<h4 style='color: #333;'>🎵 BGMリクエスト</h4>", unsafe_allow_html=True)
+bgm_choice = st.selectbox("今の気分に合う音楽は？", ["静かなジャズ", "クラシック", "雨の音", "ケルト音楽", "無音（静寂）"])
+if st.button("リクエスト送信", use_container_width=True):
+    send_discord(f"🎵 **【BGMリクエスト】Table {table_id}**\n希望BGM: {bgm_choice}")
+    st.toast(f"「{bgm_choice}」をリクエストしました！")
+
+st.markdown('</div>', unsafe_allow_html=True)
