@@ -235,31 +235,26 @@ st.markdown("""
     }
     
     /* ---------- フローティングバー ---------- */
-    .floating-bar-bg {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 80px;
-        background-color: rgba(62, 39, 35, 0.95);
-        z-index: 9998;
-        border-top: 2px solid #d4af37;
-        box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+    /* 親要素の制限を解除して画面（viewport）に対して固定できるようにする */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stAppViewBlockContainer"], [data-testid="stVerticalBlock"] {
+        transform: none !important;
+        will-change: auto !important;
+        contain: none !important;
     }
-    div[data-testid="column"]:has(.floating-order) {
+    
+    div[data-testid="stHorizontalBlock"]:has(.floating-marker) {
         position: fixed !important;
-        bottom: 15px;
-        left: 5%;
-        width: 42.5% !important;
-        z-index: 9999;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        background-color: rgba(62, 39, 35, 0.95) !important;
+        padding: 15px 20px 25px 20px !important;
+        z-index: 99999 !important;
+        border-top: 2px solid #d4af37 !important;
+        box-shadow: 0 -5px 15px rgba(0,0,0,0.5) !important;
+        margin: 0 !important;
     }
-    div[data-testid="column"]:has(.floating-checkout) {
-        position: fixed !important;
-        bottom: 15px;
-        right: 5%;
-        width: 42.5% !important;
-        z-index: 9999;
-    }
+    
     [data-testid="stAppViewBlockContainer"] {
         padding-bottom: 120px !important;
     }
@@ -588,12 +583,11 @@ st.markdown('</div>', unsafe_allow_html=True)
 # --- フローティングバー（注文＆お会計ボタン） ---
 # 管理画面以外（顧客画面のみ）で表示する
 if table_id != "admin":
-    st.markdown('<div class="floating-bar-bg"></div>', unsafe_allow_html=True)
     with st.container():
         f_col1, f_col2 = st.columns(2)
         
         with f_col1:
-            st.markdown('<div class="floating-order"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="floating-marker"></div>', unsafe_allow_html=True)
             if len(st.session_state.cart) > 0:
                 if st.button("✨ 注文を確定", use_container_width=True, key="floating_order"):
                     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -630,7 +624,6 @@ if table_id != "admin":
                 st.button("✨ 注文を確定", use_container_width=True, disabled=True, key="floating_order_disabled")
 
         with f_col2:
-            st.markdown('<div class="floating-checkout"></div>', unsafe_allow_html=True)
             if len(st.session_state.ordered_items) > 0:
                 if st.button("💳 お会計依頼", use_container_width=True, key="floating_checkout"):
                     st.session_state.checkout_requested = True
