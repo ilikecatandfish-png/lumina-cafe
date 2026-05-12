@@ -233,6 +233,22 @@ st.markdown("""
         border: 1px dashed rgba(255, 215, 0, 0.5); color: white; margin-top: 20px;
         backdrop-filter: blur(5px);
     }
+    
+    /* ---------- フローティングバー ---------- */
+    div[data-testid="stVerticalBlock"]:has(.floating-marker) {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: rgba(62, 39, 35, 0.95) !important;
+        padding: 15px 20px 25px 20px;
+        z-index: 9999;
+        border-top: 2px solid #d4af37;
+        box-shadow: 0 -5px 15px rgba(0,0,0,0.5);
+    }
+    [data-testid="stAppViewBlockContainer"] {
+        padding-bottom: 120px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -260,13 +276,13 @@ if table_id == "admin":
             for order in queue:
                 with st.container():
                     st.markdown(f"""
-                        <div style="background-color: #ffffe0; color: #000; padding: 15px; border-radius: 8px; border-top: 5px solid #e74c3c; margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">
-                                <h3 style="margin: 0; color: #000 !important;">Table {order['table_id']}</h3>
-                                <span style="color: #555 !important; font-weight: bold;">{order['time']}</span>
+                        <div style="background-color: #34495e; color: #fff; padding: 15px; border-radius: 8px; border-top: 5px solid #e74c3c; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #7f8c8d; padding-bottom: 5px; margin-bottom: 10px;">
+                                <h3 style="margin: 0; color: #fff !important;">Table {order['table_id']}</h3>
+                                <span style="color: #bdc3c7 !important; font-weight: bold;">{order['time']}</span>
                             </div>
                             <ul style="list-style: none; padding-left: 0; margin-bottom: 15px; font-size: 1.1em;">
-                                {"".join([f'<li style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #ddd;"><span style="color: #000 !important;">{item["name"]}</span><span style="color: #e74c3c !important; font-weight: bold;">x {item["count"]}</span></li>' for item in order['items']])}
+                                {"".join([f'<li style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #7f8c8d;"><span style="color: #fff !important;">{item["name"]}</span><span style="color: #ffcccb !important; font-weight: bold;">x {item["count"]}</span></li>' for item in order['items']])}
                             </ul>
                         </div>
                     """, unsafe_allow_html=True)
@@ -276,23 +292,40 @@ if table_id == "admin":
                         st.rerun()
 
     with tab_register:
-        st.markdown("各テーブルの注文状況（未会計の伝票）とリセット操作が行えます。")
+        st.markdown("お客様が「お会計を依頼」したテーブルのみ、注文内容と金額が表示されます。")
         active_tables = [tid for tid in global_db["tables"] if len(global_db["tables"][tid].get("ordered_items", [])) > 0]
         
         if not active_tables:
-            st.info("現在、お会計待ちのテーブルはありません。")
+            st.info("現在、注文済みのテーブルはありません。")
         else:
             for t_id in active_tables:
                 data = global_db["tables"][t_id]
-                st.markdown(f"### Table {t_id}")
-                st.write("【注文済みの商品】")
-                for item in data["ordered_items"]:
-                    st.write(f"- {item['name']}")
+                is_checkout = data.get("checkout_requested", False)
                 
-                if st.button(f"💳 Table {t_id} の会計を完了（リセット）", key=f"reset_{t_id}"):
-                    del global_db["tables"][t_id]
-                    st.success(f"Table {t_id} のデータをリセットしました！")
-                    st.rerun()
+                if is_checkout:
+                    st.markdown(f"### 💳 Table {t_id} (お会計待ち)")
+                    st.write("【注文内容と金額】")
+                    
+                    grouped, raw_total = get_grouped_items(data["ordered_items"], 1.0)
+                    for item in grouped:
+                        st.write(f"- {item['name']} × {item['count']} : ¥{item['subtotal']}")
+                    
+                    st.markdown(f"**合計金額(割引適用前): ¥{raw_total}**")
+                    if data.get("has_ebook") or data.get("has_paper_book"):
+                        st.markdown("<span style='color: #e74c3c;'>※本持参割引対象テーブルです（レジで割引を適用してください）</span>", unsafe_allow_html=True)
+                    
+                    if st.button(f"💳 Table {t_id} の会計を完了（リセット）", key=f"reset_checkout_{t_id}"):
+                        del global_db["tables"][t_id]
+                        st.success(f"Table {t_id} のデータをリセットしました！")
+                        st.rerun()
+                else:
+                    st.markdown(f"### 🍽️ Table {t_id} (お食事中)")
+                    st.write("※まだお会計依頼がありません。")
+                    with st.expander("強制リセット（退店済等のエラー時のみ）"):
+                        if st.button(f"強制リセットする", key=f"reset_force_{t_id}"):
+                            del global_db["tables"][t_id]
+                            st.success(f"Table {t_id} を強制リセットしました。")
+                            st.rerun()
                 st.divider()
 
     with tab_settings:
@@ -314,6 +347,7 @@ if table_id not in global_db["tables"]:
         "has_paper_book": False,
         "has_ebook": False,
         "scanned_book_title": None,
+        "checkout_requested": False,
         "timeline": [
             {"time": "1時間前", "book": "「星の王子さま」 - 何度読んでも新しい発見があります。"},
             {"time": "3時間前", "book": "「銀河鉄道の夜」 - ホットティーと一緒に読むと最高です。"}
@@ -322,7 +356,7 @@ if table_id not in global_db["tables"]:
 
 # サーバー側のデータを復元
 db_ref = global_db["tables"][table_id]
-for key in ["cart", "ordered_items", "has_paper_book", "has_ebook", "scanned_book_title", "timeline"]:
+for key in ["cart", "ordered_items", "has_paper_book", "has_ebook", "scanned_book_title", "checkout_requested", "timeline"]:
     if key not in st.session_state:
         st.session_state[key] = db_ref[key]
 
@@ -333,6 +367,7 @@ def sync_db():
     db_ref["has_paper_book"] = st.session_state.has_paper_book
     db_ref["has_ebook"] = st.session_state.has_ebook
     db_ref["scanned_book_title"] = st.session_state.scanned_book_title
+    db_ref["checkout_requested"] = st.session_state.checkout_requested
     db_ref["timeline"] = list(st.session_state.timeline)
 
 st.markdown(f"""
@@ -475,46 +510,9 @@ if len(st.session_state.cart) > 0:
     
     st.markdown(f"**合計金額: ¥{total_price}**")
     
-    col_order, col_clear = st.columns(2)
-    with col_order:
-        if st.button("✨ 注文を確定する", use_container_width=True):
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            items_str_list = []
-            for item in grouped_cart:
-                items_str_list.append(f"{item['name']}(x{item['count']})")
-            items_str = ", ".join(items_str_list)
-            
-            # --- 厨房キューへの追加 ---
-            ticket = {
-                "ticket_id": str(uuid.uuid4()),
-                "table_id": table_id,
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "items": grouped_cart
-            }
-            global_db["kitchen_queue"].append(ticket)
-            # ------------------------
-            
-            update_sheet("Sales", [now, table_id, items_str, total_price, rec_book if rec_book else "なし"])
-            if rec_book:
-                update_sheet("Recommendations", [now, rec_book])
-                st.session_state.timeline.insert(0, {"time": "たった今", "book": rec_book})
-            
-            send_discord(f"🔔 **【注文】Table {table_id}**\n内容: {items_str}\n今回の注文金額: ¥{total_price}")
-            
-            # 注文済みリストに移動
-            for item in st.session_state.cart:
-                st.session_state.ordered_items.append(item)
-            
-            st.session_state.cart.clear()
-            st.balloons()
-            st.success("注文を承りました！少々お待ちください。")
-            st.rerun()
-            
-    with col_clear:
-        if st.button("🗑 カートを空にする", use_container_width=True):
-            st.session_state.cart.clear()
-            st.rerun()
+    if st.button("🗑 カートを空にする", use_container_width=True):
+        st.session_state.cart.clear()
+        st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 注文済みリスト（伝票） ---
@@ -548,29 +546,7 @@ for t in st.session_state.timeline:
     </div>
     """, unsafe_allow_html=True)
 
-# --- お会計 ---
-st.divider()
-if len(st.session_state.ordered_items) > 0:
-    if st.button("💳 お会計を依頼する", use_container_width=True):
-        grouped_ordered, order_total = get_grouped_items(st.session_state.ordered_items, discount)
-        
-        items_detail_list = []
-        for item in grouped_ordered:
-            if item['count'] > 1:
-                items_detail_list.append(f"- {item['name']} × {item['count']}: ¥{item['subtotal']}")
-            else:
-                items_detail_list.append(f"- {item['name']}: ¥{item['subtotal']}")
-        items_detail = "\n".join(items_detail_list)
-        
-        msg = f"💰 **【会計依頼】Table {table_id}**\n"
-        msg += f"【注文内訳】\n{items_detail}\n"
-        msg += f"**合計金額: ¥{order_total}**"
-        
-        if st.session_state.has_ebook:
-            msg += "\n⚠️ **【注意】電子書籍の目視確認が必要です（割引適用済み）**"
-        
-        send_discord(msg)
-        st.info("レジにてお会計の準備をしております。お忘れ物がないようお気をつけください。")
+# --- お会計エリア（フローティングバーに移動） ---
 
 # --- クイックサービス（おかたづけ・BGM） ---
 st.divider()
@@ -590,6 +566,75 @@ if st.button("リクエスト送信", use_container_width=True):
     st.toast(f"「{bgm_choice}」をリクエストしました！")
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# --- フローティングバー（注文＆お会計ボタン） ---
+# 管理画面以外（顧客画面のみ）で表示する
+if table_id != "admin":
+    with st.container():
+        st.markdown('<div class="floating-marker"></div>', unsafe_allow_html=True)
+        f_col1, f_col2 = st.columns(2)
+        
+        with f_col1:
+            if len(st.session_state.cart) > 0:
+                if st.button("✨ 注文を確定", use_container_width=True, key="floating_order"):
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    grouped_cart, total_price = get_grouped_items(st.session_state.cart, discount)
+                    
+                    items_str_list = []
+                    for item in grouped_cart:
+                        items_str_list.append(f"{item['name']}(x{item['count']})")
+                    items_str = ", ".join(items_str_list)
+                    
+                    ticket = {
+                        "ticket_id": str(uuid.uuid4()),
+                        "table_id": table_id,
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "items": grouped_cart
+                    }
+                    global_db["kitchen_queue"].append(ticket)
+                    
+                    update_sheet("Sales", [now, table_id, items_str, total_price, rec_book if rec_book else "なし"])
+                    if rec_book:
+                        update_sheet("Recommendations", [now, rec_book])
+                        st.session_state.timeline.insert(0, {"time": "たった今", "book": rec_book})
+                    
+                    send_discord(f"🔔 **【注文】Table {table_id}**\n内容: {items_str}\n今回の注文金額: ¥{total_price}")
+                    
+                    for item in st.session_state.cart:
+                        st.session_state.ordered_items.append(item)
+                    
+                    st.session_state.cart.clear()
+                    st.balloons()
+                    st.success("注文を承りました！")
+                    st.rerun()
+            else:
+                st.button("✨ 注文を確定", use_container_width=True, disabled=True, key="floating_order_disabled")
+
+        with f_col2:
+            if len(st.session_state.ordered_items) > 0:
+                if st.button("💳 お会計依頼", use_container_width=True, key="floating_checkout"):
+                    st.session_state.checkout_requested = True
+                    grouped_ordered, order_total = get_grouped_items(st.session_state.ordered_items, discount)
+                    
+                    items_detail_list = []
+                    for item in grouped_ordered:
+                        if item['count'] > 1:
+                            items_detail_list.append(f"- {item['name']} × {item['count']}: ¥{item['subtotal']}")
+                        else:
+                            items_detail_list.append(f"- {item['name']}: ¥{item['subtotal']}")
+                    items_detail = "\n".join(items_detail_list)
+                    
+                    msg = f"💰 **【会計依頼】Table {table_id}**\n"
+                    msg += f"【注文内訳】\n{items_detail}\n"
+                    msg += f"**合計金額: ¥{order_total}**"
+                    
+                    if st.session_state.has_ebook:
+                        msg += "\n⚠️ **【注意】電子書籍の目視確認が必要です（割引適用済み）**"
+                    
+                    send_discord(msg)
+                    st.info("レジにてお会計の準備をしております。")
+            else:
+                st.button("💳 お会計依頼", use_container_width=True, disabled=True, key="floating_checkout_disabled")
 
 # スクリプトの最後で常に状態をサーバーに同期・保存する
 sync_db()
