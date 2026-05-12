@@ -356,9 +356,13 @@ if table_id not in global_db["tables"]:
 
 # サーバー側のデータを復元
 db_ref = global_db["tables"][table_id]
+
+# 以前のバージョンで保存されたデータ（キャッシュ）への互換性対応
+db_ref.setdefault("checkout_requested", False)
+
 for key in ["cart", "ordered_items", "has_paper_book", "has_ebook", "scanned_book_title", "checkout_requested", "timeline"]:
     if key not in st.session_state:
-        st.session_state[key] = db_ref[key]
+        st.session_state[key] = db_ref.get(key)
 
 # データをサーバーに保存するための関数（末尾で呼び出す）
 def sync_db():
