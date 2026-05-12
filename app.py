@@ -3,6 +3,7 @@ import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import uuid
 
 from PIL import Image
 from pyzbar.pyzbar import decode
@@ -33,8 +34,12 @@ def decode_barcode(image_file):
 # --- 1. 初期設定 & 接続 ---
 @st.cache_resource
 def get_global_db():
-    return {"tables": {}}
+    return {"tables": {}, "settings": {"show_photos": True}, "kitchen_queue": []}
 global_db = get_global_db()
+if "settings" not in global_db:
+    global_db["settings"] = {"show_photos": True}
+if "kitchen_queue" not in global_db:
+    global_db["kitchen_queue"] = []
 def get_gspread_client():
     import os
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -240,25 +245,64 @@ if table_id == "admin":
     st.set_page_config(page_title="LUMINA Admin", layout="centered")
     st.markdown("<style>.stApp {background-color: #2c3e50;} h1, h2, h3, p, div {color: white !important;} </style>", unsafe_allow_html=True)
     st.title("💻 店長専用 管理画面")
-    st.markdown("各テーブルの注文状況（未会計の伝票）とリセット操作が行えます。")
     
-    active_tables = [tid for tid in global_db["tables"] if len(global_db["tables"][tid].get("ordered_items", [])) > 0]
+    tab_kitchen, tab_register, tab_settings = st.tabs(["🍳 厨房（注文管理）", "💳 レジ（お会計）", "⚙️ 設定"])
     
-    if not active_tables:
-        st.info("現在、お会計待ちのテーブルはありません。")
-    else:
-        for t_id in active_tables:
-            data = global_db["tables"][t_id]
-            st.markdown(f"### Table {t_id}")
-            st.write("【注文済みの商品】")
-            for item in data["ordered_items"]:
-                st.write(f"- {item['name']}")
+    with tab_kitchen:
+        st.markdown("厨房向けの未処理注文（伝票）一覧です。料理の提供が終わったら完了ボタンを押してください。")
+        if st.button("🔄 最新の注文を取得", use_container_width=True):
+            st.rerun()
             
-            if st.button(f"💳 Table {t_id} の会計を完了（リセット）", key=f"reset_{t_id}"):
-                del global_db["tables"][t_id]
-                st.success(f"Table {t_id} のデータをリセットしました！")
-                st.rerun()
-            st.divider()
+        queue = global_db["kitchen_queue"]
+        if not queue:
+            st.info("現在、未処理の注文はありません。")
+        else:
+            for order in queue:
+                with st.container():
+                    st.markdown(f"""
+                        <div style="background-color: #ffffe0; color: #000; padding: 15px; border-radius: 8px; border-top: 5px solid #e74c3c; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">
+                                <h3 style="margin: 0; color: #000 !important;">Table {order['table_id']}</h3>
+                                <span style="color: #555 !important; font-weight: bold;">{order['time']}</span>
+                            </div>
+                            <ul style="list-style: none; padding-left: 0; margin-bottom: 15px; font-size: 1.1em;">
+                                {"".join([f'<li style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #ddd;"><span style="color: #000 !important;">{item["name"]}</span><span style="color: #e74c3c !important; font-weight: bold;">x {item["count"]}</span></li>' for item in order['items']])}
+                            </ul>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(f"✅ 提供完了 (Table {order['table_id']} / {order['time']})", key=f"complete_{order['ticket_id']}"):
+                        global_db["kitchen_queue"].remove(order)
+                        st.success("提供を完了しました！")
+                        st.rerun()
+
+    with tab_register:
+        st.markdown("各テーブルの注文状況（未会計の伝票）とリセット操作が行えます。")
+        active_tables = [tid for tid in global_db["tables"] if len(global_db["tables"][tid].get("ordered_items", [])) > 0]
+        
+        if not active_tables:
+            st.info("現在、お会計待ちのテーブルはありません。")
+        else:
+            for t_id in active_tables:
+                data = global_db["tables"][t_id]
+                st.markdown(f"### Table {t_id}")
+                st.write("【注文済みの商品】")
+                for item in data["ordered_items"]:
+                    st.write(f"- {item['name']}")
+                
+                if st.button(f"💳 Table {t_id} の会計を完了（リセット）", key=f"reset_{t_id}"):
+                    del global_db["tables"][t_id]
+                    st.success(f"Table {t_id} のデータをリセットしました！")
+                    st.rerun()
+                st.divider()
+
+    with tab_settings:
+        st.subheader("⚙️ UI設定")
+        current_show_photos = global_db["settings"].get("show_photos", True)
+        show_photos = st.checkbox("メニューに写真を表示する", value=current_show_photos)
+        if show_photos != current_show_photos:
+            global_db["settings"]["show_photos"] = show_photos
+            st.success("設定を更新しました。（他のお客様の画面にも即座に反映されます）")
+
     st.stop() # 顧客画面を描画せずにここで終了
 # ============================================
 
@@ -350,23 +394,23 @@ st.divider()
 # メニューデータ
 menu_data = {
     "☕ お飲み物": [
-        {"name": "コーヒーブラック", "price": 650, "is_hot_drink": True},
-        {"name": "カフェオレ", "price": 700, "is_hot_drink": True},
-        {"name": "カプチーノ", "price": 750, "is_hot_drink": True},
-        {"name": "カフェラテ", "price": 700, "is_hot_drink": True},
-        {"name": "船長特製ブレンド", "price": 750, "is_hot_drink": True},
-        {"name": "対馬の和紅茶", "price": 750, "is_hot_drink": True},
-        {"name": "ミルクティ", "price": 750, "is_hot_drink": True},
-        {"name": "オレンジジュース", "price": 550, "is_hot_drink": False},
-        {"name": "ブドウジュース", "price": 550, "is_hot_drink": False},
-        {"name": "リンゴジュース", "price": 550, "is_hot_drink": False},
-        {"name": "カルピス", "price": 550, "is_hot_drink": False},
+        {"name": "コーヒーブラック", "price": 650, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=500&q=80"},
+        {"name": "カフェオレ", "price": 700, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=500&q=80"},
+        {"name": "カプチーノ", "price": 750, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1534778101976-62847782c213?w=500&q=80"},
+        {"name": "カフェラテ", "price": 700, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?w=500&q=80"},
+        {"name": "船長特製ブレンド", "price": 750, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1559525839-b184a4d698c7?w=500&q=80"},
+        {"name": "対馬の和紅茶", "price": 750, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=500&q=80"},
+        {"name": "ミルクティ", "price": 750, "is_hot_drink": True, "image_url": "https://images.unsplash.com/photo-1576092762791-dd9e2220afa1?w=500&q=80"},
+        {"name": "オレンジジュース", "price": 550, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&q=80"},
+        {"name": "ブドウジュース", "price": 550, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=500&q=80"},
+        {"name": "リンゴジュース", "price": 550, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&q=80"},
+        {"name": "カルピス", "price": 550, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500&q=80"},
     ],
     "🍰 デザート": [
-        {"name": "フィナンシェ", "price": 400, "is_hot_drink": False},
-        {"name": "ハニーナッツテリーヌ", "price": 700, "is_hot_drink": False},
-        {"name": "チーズケーキ", "price": 650, "is_hot_drink": False},
-        {"name": "濃厚ガトーショコラ", "price": 700, "is_hot_drink": False},
+        {"name": "フィナンシェ", "price": 400, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1601314154432-8418f785b378?w=500&q=80"},
+        {"name": "ハニーナッツテリーヌ", "price": 700, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=500&q=80"},
+        {"name": "チーズケーキ", "price": 650, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1533134242443-d4fd215305ad?w=500&q=80"},
+        {"name": "濃厚ガトーショコラ", "price": 700, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=500&q=80"},
     ]
 }
 
@@ -374,7 +418,7 @@ menu_data = {
 current_hour = datetime.now().hour
 if current_hour >= 17 or current_hour < 5:
     menu_data["🌙 夜限定(17:00〜)"] = [
-        {"name": "ハニーホットミルク", "price": 650, "is_hot_drink": False}
+        {"name": "ハニーホットミルク", "price": 650, "is_hot_drink": False, "image_url": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=500&q=80"}
     ]
 
 st.subheader("📚 メニュー")
@@ -397,8 +441,15 @@ for i, category in enumerate(menu_data.keys()):
 
                 final_price = int(base_price * discount)
                 
+                show_photos = global_db["settings"].get("show_photos", True)
+                image_html = ""
+                if show_photos and "image_url" in item:
+                    img_url = item["image_url"]
+                    image_html = f'<div style="width: 100%; border-radius: 8px; overflow: hidden; margin-bottom: 15px;"><img src="{img_url}" style="width: 100%; height: 160px; object-fit: cover; display: block;"></div>'
+                
                 st.markdown(f"""
                     <div class="menu-card">
+                        {image_html}
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <div><h3 style="margin:0;">{item['name']}</h3><s>¥{base_price}</s></div>
                             <div class="gold-price" style="font-size: 1.4em; font-weight: bold;">¥{final_price}</div>
@@ -433,6 +484,16 @@ if len(st.session_state.cart) > 0:
             for item in grouped_cart:
                 items_str_list.append(f"{item['name']}(x{item['count']})")
             items_str = ", ".join(items_str_list)
+            
+            # --- 厨房キューへの追加 ---
+            ticket = {
+                "ticket_id": str(uuid.uuid4()),
+                "table_id": table_id,
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "items": grouped_cart
+            }
+            global_db["kitchen_queue"].append(ticket)
+            # ------------------------
             
             update_sheet("Sales", [now, table_id, items_str, total_price, rec_book if rec_book else "なし"])
             if rec_book:
